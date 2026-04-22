@@ -29,7 +29,7 @@ SITE_CONFIG = {
     
     # Video Tutorial Links
     "howto_video_link": "https://youtu.be/VwWdm9UFZRM",
-    "create_own_video_link": "https://github.com/thory99/FF-Long-Bio",   # ← last line, no comma
+    "create_own_video_link": "https://github.com/7hsiamv1/BIO-TOOLS",   # ← last line, no comma
 
     "templates": [
         {
