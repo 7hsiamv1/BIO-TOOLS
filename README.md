@@ -1,4 +1,4 @@
-# ⚡ FF BIO TOOL (THORYXFF)
+# ⚡ FF BIO TOOL (7H SIAM)
 
 A complete web tool to create and apply colored bios for Free Fire profile. Users can also **HOST their OWN COPY** of this tool by watching the video tutorial.
 
