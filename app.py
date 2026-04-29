@@ -24,9 +24,9 @@ except ImportError:
         "youtube_link": "https://youtube.com",
         "instagram_link": "https://instagram.com",
         "telegram_link": "https://t.me/yourchannel",
-        "popup_title": "JOIN COMMUNITY",
-        "popup_message": "Follow us!",
-        "bio_char_limit": 280,
+        "popup_title": "",
+        "popup_message": "",
+        "bio_char_limit": 300,
         "default_region": "IND",
         "footer_text": "FF BIO TOOL",
         "howto_youtube_link": "https://youtu.be/your-tutorial",
@@ -41,7 +41,7 @@ except ImportError:
 
 app.config['SITE_CONFIG'] = SITE_CONFIG
 
-# Protobuf setup (same as before)
+# Protobuf setup
 _sym_db = _symbol_database.Default()
 DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\ndata.proto\"\xbb\x01\n\x04\x44\x61ta\x12\x0f\n\x07\x66ield_2\x18\x02 \x01(\x05\x12\x1e\n\x07\x66ield_5\x18\x05 \x01(\x0b\x32\r.EmptyMessage\x12\x1e\n\x07\x66ield_6\x18\x06 \x01(\x0b\x32\r.EmptyMessage\x12\x0f\n\x07\x66ield_8\x18\x08 \x01(\t\x12\x0f\n\x07\x66ield_9\x18\t \x01(\x05\x12\x1f\n\x08\x66ield_11\x18\x0b \x01(\x0b\x32\r.EmptyMessage\x12\x1f\n\x08\x66ield_12\x18\x0c \x01(\x0b\x32\r.EmptyMessage\"\x0e\n\x0c\x45mptyMessageb\x06proto3')
 _globals = globals()
@@ -53,61 +53,95 @@ EmptyMessage = _sym_db.GetSymbol('EmptyMessage')
 
 # Encryption keys
 key = bytes([89, 103, 38, 116, 99, 37, 68, 69, 117, 104, 54, 37, 90, 99, 94, 56])
-iv = bytes([54, 111, 121, 90, 68, 114, 50, 50, 69, 51, 121, 99, 104, 106, 77, 37])
+iv  = bytes([54, 111, 121, 90, 68, 114, 50, 50, 69, 51, 121, 99, 104, 106, 77, 37])
+
 
 def get_region_url(region):
     region_urls = {
         "IND": "https://client.ind.freefiremobile.com",
-        "BR": "https://client.us.freefiremobile.com",
-        "US": "https://client.us.freefiremobile.com",
+        "BR":  "https://client.us.freefiremobile.com",
+        "US":  "https://client.us.freefiremobile.com",
         "SAC": "https://client.us.freefiremobile.com",
-        "NA": "https://client.us.freefiremobile.com",
-        "ME": "https://clientbp.common.ggbluefox.com",
-        "TH": "https://clientbp.common.ggbluefox.com"
+        "NA":  "https://client.us.freefiremobile.com",
+        "ME":  "https://clientbp.common.ggbluefox.com",
+        "TH":  "https://clientbp.common.ggbluefox.com",
     }
     return region_urls.get(region.upper(), "https://clientbp.ggblueshark.com")
 
+
+def extract_eat_token(raw):
+    """EAT token URL বা raw value থেকে শুধু token বের করে।"""
+    raw = raw.strip()
+    if '?' in raw or '&' in raw:
+        match = re.search(r'[?&]eat=([^&\s]+)', raw)
+        if match:
+            return urllib.parse.unquote(match.group(1))
+    return raw
+
+
 def get_account_from_eat(eat_token):
+    """
+    EAT token দিয়ে JWT এবং account info আনে।
+    Returns: (jwt_token, account_info, error_message)
+    """
     try:
-        if '?eat=' in eat_token:
-            parsed = urllib.parse.urlparse(eat_token)
-            params = urllib.parse.parse_qs(parsed.query)
-            eat_token = params.get('eat', [eat_token])[0]
-        elif '&eat=' in eat_token:
-            match = re.search(r'[?&]eat=([^&]+)', eat_token)
-            if match:
-                eat_token = match.group(1)
-        
-        EAT_API_URL = "https://eat-api.thory.buzz/api"
-        response = requests.get(f"{EAT_API_URL}?eatjwt={eat_token}", timeout=15)
-        
-        if response.status_code != 200:
-            return None, None, f"API error: HTTP {response.status_code}"
-        
-        data = response.json()
-        if data.get('status') != 'success':
-            return None, None, f"Invalid token: {data.get('message', 'Unknown error')}"
-        
-        jwt_token = data.get('token')
-        if not jwt_token:
-            return None, None, "No JWT token in response"
-        
-        account_info = {
-            "uid": data.get('uid'),
-            "region": data.get('region', 'IND'),
-            "nickname": data.get('nickname')
+        token = extract_eat_token(eat_token)
+
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36",
         }
-        
+
+        EAT_API_URL = "https://eat-api.thory.buzz/api"
+        response = requests.get(
+            f"{EAT_API_URL}?eatjwt={token}",
+            headers=headers,
+            timeout=20
+        )
+
+        if response.status_code != 200:
+            return None, None, f"EAT API error: HTTP {response.status_code}"
+
+        data = response.json()
+
+        # status field চেক — বিভিন্ন API আলাদাভাবে response দেয়
+        status_ok = (
+            data.get('status') in ('success', 'ok', True, 1) or
+            bool(data.get('token')) or
+            bool(data.get('jwt'))
+        )
+        if not status_ok:
+            msg = data.get('message') or data.get('error') or 'Unknown error'
+            return None, None, f"Invalid token: {msg}"
+
+        jwt_token = data.get('token') or data.get('jwt') or data.get('access_token')
+        if not jwt_token:
+            return None, None, "No JWT token found in API response"
+
+        region = (data.get('region') or data.get('server') or 'IND').upper()
+
+        account_info = {
+            "uid":      data.get('uid') or data.get('user_id') or data.get('id'),
+            "region":   region,
+            "nickname": data.get('nickname') or data.get('name') or data.get('username'),
+        }
+
         return jwt_token, account_info, None
-        
+
+    except requests.exceptions.Timeout:
+        return None, None, "EAT API request timed out. Try again."
+    except requests.exceptions.ConnectionError:
+        return None, None, "Cannot reach EAT API server. Check your connection."
     except Exception as e:
         return None, None, str(e)
 
+
 def update_bio_with_jwt(jwt_token, bio_text, region):
+    """JWT token দিয়ে Free Fire এ bio আপডেট করে।"""
     try:
         base_url = get_region_url(region)
-        url_bio = f"{base_url}/UpdateSocialBasicInfo"
-        
+        url_bio  = f"{base_url}/UpdateSocialBasicInfo"
+
         data = Data()
         data.field_2 = 17
         data.field_5.CopyFrom(EmptyMessage())
@@ -116,12 +150,12 @@ def update_bio_with_jwt(jwt_token, bio_text, region):
         data.field_9 = 1
         data.field_11.CopyFrom(EmptyMessage())
         data.field_12.CopyFrom(EmptyMessage())
-        
-        data_bytes = data.SerializeToString()
-        padded_data = pad(data_bytes, AES.block_size)
-        cipher = AES.new(key, AES.MODE_CBC, iv)
+
+        data_bytes     = data.SerializeToString()
+        padded_data    = pad(data_bytes, AES.block_size)
+        cipher         = AES.new(key, AES.MODE_CBC, iv)
         encrypted_data = cipher.encrypt(padded_data)
-        
+
         if "ind" in base_url:
             host = "client.ind.freefiremobile.com"
         elif "us" in base_url:
@@ -130,86 +164,97 @@ def update_bio_with_jwt(jwt_token, bio_text, region):
             host = "clientbp.common.ggbluefox.com"
         else:
             host = "clientbp.ggblueshark.com"
-        
+
         headers = {
-            "Expect": "100-continue",
-            "Authorization": f"Bearer {jwt_token}",
+            "Expect":          "100-continue",
+            "Authorization":   f"Bearer {jwt_token}",
             "X-Unity-Version": "2018.4.11f1",
-            "X-GA": "v1 1",
-            "ReleaseVersion": SITE_CONFIG.get('freefire_version', 'OB53'),
-            "Content-Type": "application/x-www-form-urlencoded",
-            "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 11; SM-A305F Build/RP1A.200720.012)",
-            "Host": host,
-            "Connection": "Keep-Alive",
-            "Accept-Encoding": "gzip"
+            "X-GA":            "v1 1",
+            "ReleaseVersion":  SITE_CONFIG.get('freefire_version', 'OB53'),
+            "Content-Type":    "application/x-www-form-urlencoded",
+            "User-Agent":      "Dalvik/2.1.0 (Linux; U; Android 11; SM-A305F Build/RP1A.200720.012)",
+            "Host":            host,
+            "Connection":      "Keep-Alive",
+            "Accept-Encoding": "gzip",
         }
-        
-        res_bio = requests.post(url_bio, headers=headers, data=encrypted_data, timeout=30)
-        return res_bio.status_code == 200
-        
+
+        res = requests.post(url_bio, headers=headers, data=encrypted_data, timeout=30)
+        return res.status_code == 200
+
     except Exception as e:
         raise Exception(str(e))
 
-# Routes
+
+# ─── Routes ──────────────────────────────────────────────────────────────────
+
 @app.route('/')
 @app.route('/page')
 def index():
-    return render_template('index.html', config=SITE_CONFIG)
+    # popup সম্পূর্ণ বন্ধ: config থেকে popup_title/message খালি করে পাঠানো হচ্ছে
+    cfg = dict(SITE_CONFIG)
+    cfg['popup_title']   = ""
+    cfg['popup_message'] = ""
+    return render_template('index.html', config=cfg)
+
 
 @app.route('/api/verify-token', methods=['POST'])
 def verify_token():
     try:
-        data = request.get_json()
-        eat_token = data.get('eat_token')
-        
+        body      = request.get_json(force=True, silent=True) or {}
+        eat_token = (body.get('eat_token') or '').strip()
+
         if not eat_token:
             return jsonify({"success": False, "error": "Missing EAT token"}), 400
-        
+
         jwt_token, account_info, error = get_account_from_eat(eat_token)
-        
+
         if error:
             return jsonify({"success": False, "error": error}), 400
-        
+
         return jsonify({
             "success": True,
             "account": {
-                "uid": account_info.get('uid'),
-                "region": account_info.get('region'),
-                "nickname": account_info.get('nickname')
+                "uid":      account_info.get('uid'),
+                "region":   account_info.get('region'),
+                "nickname": account_info.get('nickname'),
             },
             "jwt_token": jwt_token
         })
-        
+
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
 
 @app.route('/api/update-bio', methods=['POST'])
 def update_bio():
     try:
-        data = request.get_json()
-        jwt_token = data.get('jwt_token')
-        bio_text = data.get('bio')
-        region = data.get('region')
-        
+        body      = request.get_json(force=True, silent=True) or {}
+        jwt_token = (body.get('jwt_token') or '').strip()
+        bio_text  = (body.get('bio')       or '').strip()
+        region    = (body.get('region')    or 'IND').strip().upper()
+
         if not jwt_token:
             return jsonify({"success": False, "error": "Missing JWT token"}), 400
-        
+
         if not bio_text:
             return jsonify({"success": False, "error": "Missing bio text"}), 400
-        
-        max_chars = SITE_CONFIG.get('bio_char_limit', 300)
+
+        max_chars = int(SITE_CONFIG.get('bio_char_limit', 300))
         if len(bio_text) > max_chars:
-            return jsonify({"success": False, "error": f"Bio exceeds {max_chars} characters"}), 400
-        
+            return jsonify({"success": False,
+                            "error": f"Bio exceeds {max_chars} characters"}), 400
+
         success = update_bio_with_jwt(jwt_token, bio_text, region)
-        
+
         if success:
             return jsonify({"success": True, "message": "Bio updated successfully!"})
         else:
-            return jsonify({"success": False, "error": "Bio update failed - server error"}), 400
-        
+            return jsonify({"success": False,
+                            "error": "Bio update failed — server rejected the request"}), 400
+
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
