@@ -7,7 +7,10 @@ from google.protobuf import symbol_database as _symbol_database
 from google.protobuf.internal import builder as _builder
 import requests
 import re
+import urllib3
 import urllib.parse
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__)
 
@@ -55,25 +58,32 @@ EmptyMessage = _sym_db.GetSymbol('EmptyMessage')
 key = bytes([89, 103, 38, 116, 99, 37, 68, 69, 117, 104, 54, 37, 90, 99, 94, 56])
 iv  = bytes([54, 111, 121, 90, 68, 114, 50, 50, 69, 51, 121, 99, 104, 106, 77, 37])
 
+# ── Region → server URL mapping (main.py থেকে নেওয়া সঠিক URLs) ──────────────
+REGION_SERVER = {
+    "IND": "https://client.ind.freefiremobile.com",
+    "ME":  "https://clientbp.ggblueshark.com",
+    "VN":  "https://clientbp.ggpolarbear.com",
+    "BD":  "https://clientbp.ggwhitehawk.com",
+    "PK":  "https://clientbp.ggblueshark.com",
+    "SG":  "https://clientbp.ggpolarbear.com",
+    "BR":  "https://client.us.freefiremobile.com",
+    "US":  "https://client.us.freefiremobile.com",
+    "NA":  "https://client.us.freefiremobile.com",
+    "SAC": "https://client.us.freefiremobile.com",
+    "ID":  "https://clientbp.ggpolarbear.com",
+    "RU":  "https://clientbp.ggpolarbear.com",
+    "TH":  "https://clientbp.ggpolarbear.com",
+}
 
 def get_region_url(region):
-    region_urls = {
-        "IND": "https://client.ind.freefiremobile.com",
-        "BD":  "https://client.ind.freefiremobile.com",   # Bangladesh → IND server
-        "SG":  "https://client.ind.freefiremobile.com",   # Singapore → IND server
-        "BR":  "https://client.us.freefiremobile.com",
-        "US":  "https://client.us.freefiremobile.com",
-        "SAC": "https://client.us.freefiremobile.com",
-        "NA":  "https://client.us.freefiremobile.com",
-        "ME":  "https://clientbp.common.ggbluefox.com",
-        "TH":  "https://clientbp.common.ggbluefox.com",
-        "ID":  "https://clientbp.common.ggbluefox.com",
-        "VN":  "https://clientbp.common.ggbluefox.com",
-        "TW":  "https://clientbp.common.ggbluefox.com",
-    }
-    r = (region or "IND").upper().strip()
-    # Unknown region → IND server (সবচেয়ে stable)
-    return region_urls.get(r, "https://client.ind.freefiremobile.com")
+    """Region code থেকে সঠিক server URL বের করে।"""
+    return REGION_SERVER.get(region.upper(), "https://clientbp.ggpolarbear.com")
+
+
+def get_host_from_url(base_url):
+    """Base URL থেকে Host header এর জন্য hostname বের করে।"""
+    # urllib.parse দিয়ে সঠিকভাবে hostname বের করা
+    return urllib.parse.urlparse(base_url).hostname or "clientbp.ggpolarbear.com"
 
 
 def extract_eat_token(raw):
@@ -103,7 +113,8 @@ def get_account_from_eat(eat_token):
         response = requests.get(
             f"{EAT_API_URL}?eatjwt={token}",
             headers=headers,
-            timeout=20
+            timeout=20,
+            verify=False
         )
 
         if response.status_code != 200:
@@ -111,7 +122,7 @@ def get_account_from_eat(eat_token):
 
         data = response.json()
 
-        # status field চেক — বিভিন্ন API আলাদাভাবে response দেয়
+        # status field চেক
         status_ok = (
             data.get('status') in ('success', 'ok', True, 1) or
             bool(data.get('token')) or
@@ -163,9 +174,7 @@ def update_bio_with_jwt(jwt_token, bio_text, region):
         cipher         = AES.new(key, AES.MODE_CBC, iv)
         encrypted_data = cipher.encrypt(padded_data)
 
-        # Host header সরাসরি URL থেকে বের করা (ggblueshark আর কখনো আসবে না)
-        from urllib.parse import urlparse as _up
-        host = _up(base_url).hostname
+        host = get_host_from_url(base_url)
 
         headers = {
             "Expect":          "100-continue",
@@ -180,7 +189,7 @@ def update_bio_with_jwt(jwt_token, bio_text, region):
             "Accept-Encoding": "gzip",
         }
 
-        res = requests.post(url_bio, headers=headers, data=encrypted_data, timeout=30)
+        res = requests.post(url_bio, headers=headers, data=encrypted_data, timeout=30, verify=False)
         return res.status_code == 200
 
     except Exception as e:
@@ -192,7 +201,6 @@ def update_bio_with_jwt(jwt_token, bio_text, region):
 @app.route('/')
 @app.route('/page')
 def index():
-    # popup সম্পূর্ণ বন্ধ: config থেকে popup_title/message খালি করে পাঠানো হচ্ছে
     cfg = dict(SITE_CONFIG)
     cfg['popup_title']   = ""
     cfg['popup_message'] = ""
