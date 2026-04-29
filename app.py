@@ -59,14 +59,21 @@ iv  = bytes([54, 111, 121, 90, 68, 114, 50, 50, 69, 51, 121, 99, 104, 106, 77, 3
 def get_region_url(region):
     region_urls = {
         "IND": "https://client.ind.freefiremobile.com",
+        "BD":  "https://client.ind.freefiremobile.com",   # Bangladesh → IND server
+        "SG":  "https://client.ind.freefiremobile.com",   # Singapore → IND server
         "BR":  "https://client.us.freefiremobile.com",
         "US":  "https://client.us.freefiremobile.com",
         "SAC": "https://client.us.freefiremobile.com",
         "NA":  "https://client.us.freefiremobile.com",
         "ME":  "https://clientbp.common.ggbluefox.com",
         "TH":  "https://clientbp.common.ggbluefox.com",
+        "ID":  "https://clientbp.common.ggbluefox.com",
+        "VN":  "https://clientbp.common.ggbluefox.com",
+        "TW":  "https://clientbp.common.ggbluefox.com",
     }
-    return region_urls.get(region.upper(), "https://clientbp.ggblueshark.com")
+    r = (region or "IND").upper().strip()
+    # Unknown region → IND server (সবচেয়ে stable)
+    return region_urls.get(r, "https://client.ind.freefiremobile.com")
 
 
 def extract_eat_token(raw):
@@ -156,14 +163,9 @@ def update_bio_with_jwt(jwt_token, bio_text, region):
         cipher         = AES.new(key, AES.MODE_CBC, iv)
         encrypted_data = cipher.encrypt(padded_data)
 
-        if "ind" in base_url:
-            host = "client.ind.freefiremobile.com"
-        elif "us" in base_url:
-            host = "client.us.freefiremobile.com"
-        elif "common" in base_url:
-            host = "clientbp.common.ggbluefox.com"
-        else:
-            host = "clientbp.ggblueshark.com"
+        # Host header সরাসরি URL থেকে বের করা (ggblueshark আর কখনো আসবে না)
+        from urllib.parse import urlparse as _up
+        host = _up(base_url).hostname
 
         headers = {
             "Expect":          "100-continue",
